@@ -1,0 +1,41 @@
+name: 每日更新 春华秋实 四季档位
+
+on:
+  schedule:
+    - cron: "10 7 * * *"    # UTC 07:10 = 北京 15:10，A股收盘后
+    - cron: "10 10 * * *"   # UTC 10:10 = 北京 18:10，兜底（schedule 高峰可能被跳过）
+    - cron: "30 23 * * *"   # UTC 23:30 = 北京 7:30，隔夜兜底
+  workflow_dispatch:        # 支持手动触发
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chunhua-etf-daily
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 抓取行情 + 计算三因子 + 生成 index.html
+        run: python build_daily.py
+
+      - name: 提交并推送（仅在有变化时）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add -A
+          git diff --cached --quiet || git commit -m "自动更新 $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M')"
+          git push || (git pull --rebase origin main && git push)
